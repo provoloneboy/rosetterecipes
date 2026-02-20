@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rosette Recipes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="grain"></div>
+  <header class="topbar">
+    <div>
+      <h1>Rosette Recipes</h1>
+      <p>Collect recipes from links, photos, and text in one elegant space.</p>
+    </div>
+    <div class="auth-shell">
+      <form id="authForm" class="auth-form">
+        <input id="emailInput" type="email" placeholder="Email" autocomplete="email" />
+        <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+        <button id="loginBtn" type="button">Log In</button>
+        <button id="signupBtn" type="button" class="ghost">Sign Up</button>
+      </form>
+      <div id="signedInBox" class="signed-in hidden">
+        <span id="authUserLabel"></span>
+        <button id="logoutBtn" type="button" class="ghost">Log Out</button>
+      </div>
+      <p id="authStatus" class="status" role="status"></p>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card importer">
+      <h2>Import a Recipe</h2>
+      <div class="import-grid">
+        <label class="field">
+          <span>From website URL</span>
+          <div class="inline-input">
+            <input id="urlInput" type="url" placeholder="https://example.com/recipe" />
+            <button id="urlImportBtn">Extract</button>
+          </div>
+        </label>
+
+        <label class="field">
+          <span>From pasted text/blog content</span>
+          <textarea id="textInput" rows="7" placeholder="Paste recipe text, ingredients, and instructions..."></textarea>
+          <button id="textImportBtn">Parse Text</button>
+        </label>
+
+        <label class="field">
+          <span>From a photo/screenshot</span>
+          <input id="imageInput" type="file" accept="image/*" />
+          <button id="imageImportBtn">Read Image</button>
+          <small>Uses OCR in your browser. Best with clear, high-contrast text.</small>
+        </label>
+      </div>
+      <p id="importStatus" class="status" role="status"></p>
+    </section>
+
+    <section class="card recipe-list-card">
+      <div class="list-header">
+        <h2>Saved Recipes</h2>
+        <input id="searchInput" type="search" placeholder="Search recipes..." />
+      </div>
+      <div class="tabs">
+        <button id="recipesTabBtn" class="tab active" type="button">Recipes</button>
+        <button id="categoriesTabBtn" class="tab" type="button">Categories</button>
+      </div>
+      <div id="recipeList" class="recipe-list"></div>
+      <div id="categoriesPanel" class="hidden">
+        <div class="inline-input">
+          <input id="newCategoryInput" type="text" placeholder="Add category (e.g., Desserts)" />
+          <button id="addCategoryBtn" type="button">Add</button>
+        </div>
+        <div id="categoryList" class="category-list"></div>
+      </div>
+    </section>
+
+    <section class="card viewer" id="viewerCard">
+      <div id="emptyViewer" class="empty-state">
+        <h3>Select a recipe</h3>
+        <p>Your imported recipes appear here with serving and unit tools.</p>
+      </div>
+
+      <article id="recipeViewer" class="hidden">
+        <header class="viewer-header">
+          <div>
+            <h2 id="recipeTitle"></h2>
+            <p id="recipeMeta"></p>
+          </div>
+          <button id="deleteRecipeBtn" class="danger">Delete</button>
+        </header>
+
+        <section class="controls">
+          <div class="control-group">
+            <label for="servingsInput">Servings</label>
+            <input id="servingsInput" type="number" min="1" step="1" value="1" />
+          </div>
+          <div class="control-group">
+            <label for="categorySelect">Category</label>
+            <select id="categorySelect"></select>
+          </div>
+          <div class="control-group">
+            <label for="unitSelect">Unit mode</label>
+            <select id="unitSelect">
+              <option value="original">Original</option>
+              <option value="metric">Metric</option>
+              <option value="us">US Customary</option>
+            </select>
+          </div>
+        </section>
+
+        <section>
+          <h3>Ingredients</h3>
+          <ul id="ingredientList"></ul>
+        </section>
+
+        <section>
+          <h3>Instructions</h3>
+          <ol id="instructionList"></ol>
+        </section>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
