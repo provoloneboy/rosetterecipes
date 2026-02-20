@@ -1,4 +1,3 @@
-import { FIREBASE_CONFIG } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth,
@@ -107,26 +106,29 @@ const FRACTIONS = {
 
 let auth = null;
 let db = null;
+let firebaseConfig = null;
 
 init();
 
 function init() {
   bindEvents();
   initTabs();
-  initFirebase();
+  void initFirebase();
   renderList();
   renderCategories();
   renderViewer();
 }
 
-function initFirebase() {
-  if (!isFirebaseConfigured()) {
-    setAuthStatus("Add your Firebase keys in firebase-config.js to enable cloud sync.");
+async function initFirebase() {
+  firebaseConfig = await loadFirebaseConfig();
+
+  if (!isFirebaseConfigured(firebaseConfig)) {
+    setAuthStatus("Add your Firebase keys in firebase-config.local.json or deploy with GitHub Secrets.");
     toggleAuthedUi(false);
     return;
   }
 
-  const app = initializeApp(FIREBASE_CONFIG);
+  const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 
@@ -152,11 +154,27 @@ function initFirebase() {
   });
 }
 
-function isFirebaseConfigured() {
-  if (!FIREBASE_CONFIG || typeof FIREBASE_CONFIG !== "object") return false;
+async function loadFirebaseConfig() {
+  const paths = ["./firebase-config.local.json", "./firebase-config.json"];
+
+  for (const path of paths) {
+    try {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) continue;
+      return await response.json();
+    } catch (_err) {
+      // Try next config source.
+    }
+  }
+
+  return null;
+}
+
+function isFirebaseConfigured(config) {
+  if (!config || typeof config !== "object") return false;
   const keys = ["apiKey", "authDomain", "projectId", "appId"];
   return keys.every((key) => {
-    const value = String(FIREBASE_CONFIG[key] || "").trim();
+    const value = String(config[key] || "").trim();
     return value && !value.includes("YOUR_");
   });
 }

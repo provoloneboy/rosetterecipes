@@ -19,7 +19,8 @@ Rosette Recipes is a static web app with cloud sync, login, recipe extraction, a
 - `index.html`: layout + auth + import + recipe viewer + tabs
 - `styles.css`: visual style and responsive behavior
 - `app.js`: Firebase auth/data sync + extraction + recipe tools
-- `firebase-config.js`: your Firebase credentials (fill this in)
+- `firebase-config.json`: placeholder runtime config (safe placeholder only)
+- `.github/workflows/pages.yml`: deploy pipeline that injects Firebase secrets
 
 ## 1. Firebase setup
 
@@ -30,22 +31,26 @@ Create a Firebase project at <https://console.firebase.google.com> and then:
    - `Authentication` -> `Sign-in method` -> enable `Email/Password`.
 3. Enable Firestore Database:
    - `Firestore Database` -> create database (production mode is fine).
-4. Copy your Firebase web config values into `firebase-config.js`.
+4. Add `provoloneboy.github.io` to `Authentication` -> `Settings` -> `Authorized domains`.
 
-Example `firebase-config.js`:
+## 2. Local config (not committed)
 
-```js
-export const FIREBASE_CONFIG = {
-  apiKey: "...",
-  authDomain: "...",
-  projectId: "...",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "...",
-};
+Create `/Users/andrewrobinson/Documents/New project/firebase-config.local.json`:
+
+```json
+{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}
 ```
 
-## 2. Firestore security rules
+`firebase-config.local.json` is in `.gitignore`, so it stays off GitHub.
+
+## 3. Firestore security rules
 
 In Firebase Console -> `Firestore Database` -> `Rules`, use:
 
@@ -66,7 +71,7 @@ service cloud.firestore {
 }
 ```
 
-## 3. Run locally
+## 4. Run locally
 
 ```bash
 python3 -m http.server 8080
@@ -74,17 +79,22 @@ python3 -m http.server 8080
 
 Then open <http://localhost:8080>.
 
-## 4. Publish for your wife to use anywhere
+## 5. Deploy with GitHub Secrets (no keys in repo)
 
-Deploy on GitHub Pages (or Firebase Hosting).
+In GitHub repo -> `Settings` -> `Secrets and variables` -> `Actions`, add:
 
-### GitHub Pages
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_APP_ID`
 
-1. Push this project to GitHub.
-2. Repo -> `Settings` -> `Pages`.
-3. Source: `Deploy from a branch`.
-4. Branch: `main`, folder `/ (root)`.
-5. Save and open the generated URL.
+Then in repo -> `Settings` -> `Pages`:
+
+1. Source: `GitHub Actions`
+2. Push to `main` (or run workflow manually)
+3. Workflow writes `firebase-config.json` at build time and deploys to Pages
 
 ## Notes
 
