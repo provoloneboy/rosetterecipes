@@ -786,12 +786,20 @@ function dedupe(arr) {
 }
 
 function isLikelyIngredient(line) {
-  const l = line.toLowerCase();
-  return (
-    /^(\d+|\d+\/\d+|\d+\.\d+|one|two|three|half|¼|½|¾)/.test(l) ||
-    /\b(tsp|tbsp|cup|cups|oz|ounce|ounces|lb|pound|g|gram|kg|ml|l|pinch|dash)\b/.test(l) ||
-    /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef)\b/.test(l)
-  );
+  const l = normalizeLine(line).toLowerCase().replace(/\*\*/g, "");
+  if (!l || isLikelyNoise(l)) return false;
+  if (/^\d{1,2}:\d{2}$/.test(l)) return false;
+  if (/^\d+\s*%$/.test(l)) return false;
+  if (/^\d+\s*(mins?|minutes?|hours?|x)$/.test(l)) return false;
+  if (/^\d+%(\d+%)+$/.test(l)) return false;
+
+  const parsed = parseIngredientAmount(l);
+  if (parsed) {
+    if (parsed.unit) return true;
+    return /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef)\b/.test(parsed.rest.toLowerCase());
+  }
+
+  return /^(pinch|dash)\b/.test(l) || /^(salt|pepper|water)\s+to taste\b/.test(l);
 }
 
 function isLikelyInstruction(line) {
@@ -811,10 +819,16 @@ function classifySectionHeading(line) {
 }
 
 function sanitizeIngredientLine(line) {
-  const cleaned = stripBullet(line).replace(/^[\[(].*?[\])]\s*/, "").trim();
+  const cleaned = stripBullet(line)
+    .replace(/^[•·]\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/^[\[(].*?[\])]\s*/, "")
+    .trim();
   if (!cleaned) return "";
   if (cleaned.length > 140) return "";
   if (isLikelyNoise(cleaned)) return "";
+  if (/^ingredients?$/i.test(cleaned)) return "";
+  if (/:\s/.test(cleaned) && /\b(this|just|will|starts|secret|enhance|recipe|you|need)\b/i.test(cleaned)) return "";
   return cleaned;
 }
 
