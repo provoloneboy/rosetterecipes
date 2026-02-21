@@ -708,7 +708,7 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
 
     if (mode === "ingredients") {
       const candidate = sanitizeIngredientLine(line);
-      if (candidate) ingredientLines.push(candidate);
+      if (candidate && isLikelyIngredient(candidate)) ingredientLines.push(candidate);
       continue;
     }
 
@@ -790,7 +790,7 @@ function isLikelyIngredient(line) {
   return (
     /^(\d+|\d+\/\d+|\d+\.\d+|one|two|three|half|¼|½|¾)/.test(l) ||
     /\b(tsp|tbsp|cup|cups|oz|ounce|ounces|lb|pound|g|gram|kg|ml|l|pinch|dash)\b/.test(l) ||
-    /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda)\b/.test(l)
+    /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef)\b/.test(l)
   );
 }
 
@@ -832,6 +832,11 @@ function isLikelyNoise(line) {
     /^(advertisement|ad|sponsored|jump to recipe|print|save|rate|share)\b/.test(l) ||
     /\b(all rights reserved|privacy policy|terms of use|cookie|follow us|subscribe|sign up|log in)\b/.test(l) ||
     /\b(calories|daily value|% dv|nutrition facts)\b/.test(l) ||
+    /\b(reviews?|photos?|submitted by|updated on|tested by|from the editor|home cooks made it|i made it)\b/.test(l) ||
+    /\b(keyboard shortcuts|subtitle settings|next up|volume|fullscreen|play\/pause|captions)\b/.test(l) ||
+    /\b(something went wrong|please reload and try again|allrecipes account|magazine|kitchen tips|occasions|cuisines|news|features|about us)\b/.test(l) ||
+    /^[^a-z0-9]*$/.test(l) ||
+    /^[a-z]+ \/\s*[a-z]/.test(l) ||
     /https?:\/\//.test(l)
   );
 }
