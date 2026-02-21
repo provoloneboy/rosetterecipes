@@ -398,7 +398,7 @@ async function importFromUrl() {
     setImportStatus("Recipe extracted from URL.");
   } catch (err) {
     console.error(err);
-    setImportStatus("Could not extract this URL automatically. Try paste text for this site.");
+    setImportStatus(`Could not extract this URL automatically (${err?.message || "blocked"}). Try paste text for this site.`);
   }
 }
 
@@ -408,6 +408,8 @@ async function fetchRecipeTextWithFallbacks(sourceUrl) {
     `https://r.jina.ai/http://${noScheme}`,
     `https://r.jina.ai/https://${noScheme}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(sourceUrl)}`,
+    `https://r.jina.ai/http://r.jina.ai/http://${noScheme}`,
   ];
 
   let lastError = null;
