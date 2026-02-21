@@ -30,6 +30,7 @@ const state = {
   unsubRecipes: null,
   unsubCategories: null,
   seededDefaultsForUid: "",
+  editingRecipe: false,
 };
 
 const DEFAULT_CATEGORY_NAMES = ["dessert", "meals", "sides", "sourdough"];
@@ -55,12 +56,20 @@ const el = {
   emptyViewer: document.getElementById("emptyViewer"),
   recipeViewer: document.getElementById("recipeViewer"),
   recipeTitle: document.getElementById("recipeTitle"),
+  recipeTitleEditor: document.getElementById("recipeTitleEditor"),
   recipeMeta: document.getElementById("recipeMeta"),
   servingsInput: document.getElementById("servingsInput"),
   categorySelect: document.getElementById("categorySelect"),
   unitSelect: document.getElementById("unitSelect"),
   ingredientList: document.getElementById("ingredientList"),
   instructionList: document.getElementById("instructionList"),
+  ingredientEditor: document.getElementById("ingredientEditor"),
+  instructionEditor: document.getElementById("instructionEditor"),
+  notesInput: document.getElementById("notesInput"),
+  saveNotesBtn: document.getElementById("saveNotesBtn"),
+  editRecipeBtn: document.getElementById("editRecipeBtn"),
+  saveRecipeEditsBtn: document.getElementById("saveRecipeEditsBtn"),
+  cancelRecipeEditsBtn: document.getElementById("cancelRecipeEditsBtn"),
   deleteRecipeBtn: document.getElementById("deleteRecipeBtn"),
   emailInput: document.getElementById("emailInput"),
   passwordInput: document.getElementById("passwordInput"),
@@ -146,6 +155,7 @@ async function initFirebase() {
       state.recipes = [];
       state.categories = [];
       state.selectedId = null;
+      state.editingRecipe = false;
       toggleAuthedUi(false);
       setImportStatus("Log in to view and sync your recipes.");
       renderList();
@@ -205,6 +215,10 @@ function bindEvents() {
 
   el.deleteRecipeBtn.addEventListener("click", deleteSelectedRecipe);
   el.categorySelect.addEventListener("change", updateSelectedRecipeCategory);
+  el.saveNotesBtn.addEventListener("click", saveRecipeNotes);
+  el.editRecipeBtn.addEventListener("click", enterRecipeEditMode);
+  el.cancelRecipeEditsBtn.addEventListener("click", cancelRecipeEditMode);
+  el.saveRecipeEditsBtn.addEventListener("click", saveRecipeEdits);
 
   el.addCategoryBtn.addEventListener("click", addCategory);
   el.newCategoryInput.addEventListener("keydown", (event) => {
@@ -271,6 +285,8 @@ function toggleAuthedUi(isAuthed) {
   el.addCategoryBtn.disabled = !isAuthed;
   el.deleteRecipeBtn.disabled = !isAuthed;
   el.categorySelect.disabled = !isAuthed;
+  el.saveNotesBtn.disabled = !isAuthed;
+  el.editRecipeBtn.disabled = !isAuthed;
 
   if (isAuthed) {
     el.authUserLabel.textContent = state.currentUser?.email || "Signed in";
@@ -360,6 +376,7 @@ function subscribeToUserData(uid) {
           servings: normalizeServings(data.servings),
           ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
           instructions: Array.isArray(data.instructions) ? data.instructions : [],
+          notes: String(data.notes || ""),
           categoryId: data.categoryId || "",
           createdAtMs: data.createdAt?.toMillis ? data.createdAt.toMillis() : 0,
         };
@@ -517,6 +534,7 @@ async function fetchRecipeFromCloudExtractor(sourceUrl) {
       servings: normalizeServings(recipe.servings || 1),
       ingredients: recipe.ingredients.map((line) => String(line).trim()).filter(Boolean),
       instructions: recipe.instructions.map((line) => String(line).trim()).filter(Boolean),
+      notes: "",
       categoryId: "",
     };
   } catch (_err) {
@@ -607,6 +625,7 @@ function parseRecipeFromStructuredData(rawText, sourceUrl) {
       servings: extractServings(String(recipe.recipeYield || "")) || 1,
       ingredients: dedupe(ingredients).slice(0, 80),
       instructions: dedupe(instructions).slice(0, 80),
+      notes: "",
       categoryId: "",
     };
   }
@@ -740,6 +759,7 @@ async function saveRecipe(recipe) {
     servings: normalizeServings(recipe.servings),
     ingredients: recipe.ingredients,
     instructions: recipe.instructions,
+    notes: String(recipe.notes || ""),
     categoryId: recipe.categoryId || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -749,6 +769,7 @@ async function saveRecipe(recipe) {
 async function deleteSelectedRecipe() {
   if (!ensureAuthed()) return;
   if (!state.selectedId) return;
+  state.editingRecipe = false;
   await deleteDoc(doc(db, "recipes", state.selectedId));
 }
 
@@ -761,6 +782,57 @@ async function updateSelectedRecipeCategory() {
     categoryId: el.categorySelect.value,
     updatedAt: serverTimestamp(),
   });
+}
+
+async function saveRecipeNotes() {
+  if (!ensureAuthed()) return;
+  const recipe = state.recipes.find((r) => r.id === state.selectedId);
+  if (!recipe) return;
+
+  await updateDoc(doc(db, "recipes", recipe.id), {
+    notes: String(el.notesInput.value || "").trim(),
+    updatedAt: serverTimestamp(),
+  });
+
+  setImportStatus("Notes saved.");
+}
+
+function enterRecipeEditMode() {
+  state.editingRecipe = true;
+  renderViewer();
+}
+
+function cancelRecipeEditMode() {
+  state.editingRecipe = false;
+  renderViewer();
+}
+
+async function saveRecipeEdits() {
+  if (!ensureAuthed()) return;
+  const recipe = state.recipes.find((r) => r.id === state.selectedId);
+  if (!recipe) return;
+
+  const nextIngredients = el.ingredientEditor.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 80);
+  const nextInstructions = el.instructionEditor.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 80);
+
+  await updateDoc(doc(db, "recipes", recipe.id), {
+    title: String(el.recipeTitleEditor.value || recipe.title).trim() || "Untitled Recipe",
+    ingredients: nextIngredients,
+    instructions: nextInstructions,
+    notes: String(el.notesInput.value || "").trim(),
+    updatedAt: serverTimestamp(),
+  });
+
+  state.editingRecipe = false;
+  setImportStatus("Recipe updated.");
 }
 
 async function addCategory() {
@@ -894,6 +966,7 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
     servings,
     ingredients: dedupe(recoveredIngredients).slice(0, 60),
     instructions: dedupe(recoveredInstructions).slice(0, 40),
+    notes: "",
     categoryId: "",
   };
 }
@@ -1195,6 +1268,7 @@ function renderViewer() {
   if (!recipe) {
     el.emptyViewer.classList.remove("hidden");
     el.recipeViewer.classList.add("hidden");
+    state.editingRecipe = false;
     return;
   }
 
@@ -1211,6 +1285,7 @@ function renderViewer() {
   const targetServings = normalizeServings(el.servingsInput.value);
   const unitMode = el.unitSelect.value;
   const ratio = targetServings / normalizeServings(recipe.servings);
+  const editing = state.editingRecipe;
 
   el.recipeTitle.textContent = recipe.title;
   const metaParts = [recipe.sourceUrl ? `Source: ${recipe.sourceUrl}` : "Manual import"];
@@ -1220,6 +1295,18 @@ function renderViewer() {
   el.recipeMeta.textContent = metaParts.join(" • ");
 
   renderCategorySelect();
+  el.notesInput.value = recipe.notes || "";
+
+  el.editRecipeBtn.classList.toggle("hidden", editing);
+  el.saveRecipeEditsBtn.classList.toggle("hidden", !editing);
+  el.cancelRecipeEditsBtn.classList.toggle("hidden", !editing);
+  el.recipeTitle.classList.toggle("hidden", editing);
+  el.recipeTitleEditor.classList.toggle("hidden", !editing);
+  if (editing) {
+    el.recipeTitleEditor.value = recipe.title;
+  }
+  el.unitSelect.disabled = editing;
+  el.servingsInput.disabled = editing;
 
   el.ingredientList.innerHTML = "";
   for (const item of recipe.ingredients) {
@@ -1227,12 +1314,22 @@ function renderViewer() {
     li.textContent = transformIngredient(item, ratio, unitMode);
     el.ingredientList.appendChild(li);
   }
+  el.ingredientList.classList.toggle("hidden", editing);
+  el.ingredientEditor.classList.toggle("hidden", !editing);
+  if (editing) {
+    el.ingredientEditor.value = recipe.ingredients.join("\n");
+  }
 
   el.instructionList.innerHTML = "";
   for (const step of recipe.instructions) {
     const li = document.createElement("li");
     li.textContent = step;
     el.instructionList.appendChild(li);
+  }
+  el.instructionList.classList.toggle("hidden", editing);
+  el.instructionEditor.classList.toggle("hidden", !editing);
+  if (editing) {
+    el.instructionEditor.value = recipe.instructions.join("\n");
   }
 }
 

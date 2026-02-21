@@ -95,9 +95,15 @@
             <header class="viewer-header">
               <div>
                 <h2 id="recipeTitle"></h2>
+                <input id="recipeTitleEditor" class="hidden" type="text" placeholder="Recipe title" />
                 <p id="recipeMeta"></p>
               </div>
-              <button id="deleteRecipeBtn" class="danger">Delete</button>
+              <div class="viewer-actions">
+                <button id="editRecipeBtn" type="button" class="ghost">Edit</button>
+                <button id="saveRecipeEditsBtn" type="button" class="hidden">Save</button>
+                <button id="cancelRecipeEditsBtn" type="button" class="ghost hidden">Cancel</button>
+                <button id="deleteRecipeBtn" type="button" class="danger">Delete</button>
+              </div>
             </header>
 
             <section class="controls">
@@ -122,11 +128,19 @@
             <section>
               <h3>Ingredients</h3>
               <ul id="ingredientList"></ul>
+              <textarea id="ingredientEditor" class="hidden" rows="8" placeholder="One ingredient per line"></textarea>
             </section>
 
             <section>
               <h3>Instructions</h3>
               <ol id="instructionList"></ol>
+              <textarea id="instructionEditor" class="hidden" rows="10" placeholder="One instruction step per line"></textarea>
+            </section>
+
+            <section>
+              <h3>Notes</h3>
+              <textarea id="notesInput" rows="4" placeholder="Add your notes for this recipe..."></textarea>
+              <button id="saveNotesBtn" type="button">Save Notes</button>
             </section>
           </article>
         </section>
