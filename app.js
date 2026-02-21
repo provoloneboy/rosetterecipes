@@ -28,7 +28,10 @@ const state = {
   currentUser: null,
   unsubRecipes: null,
   unsubCategories: null,
+  seededDefaultsForUid: "",
 };
+
+const DEFAULT_CATEGORY_NAMES = ["dessert", "meals", "sides", "sourdough"];
 
 const el = {
   urlInput: document.getElementById("urlInput"),
@@ -312,6 +315,7 @@ function cleanupSubscriptions() {
 
 function subscribeToUserData(uid) {
   cleanupSubscriptions();
+  state.seededDefaultsForUid = "";
 
   const recipeQuery = query(collection(db, "recipes"), where("uid", "==", uid));
   state.unsubRecipes = onSnapshot(recipeQuery, (snapshot) => {
@@ -353,7 +357,35 @@ function subscribeToUserData(uid) {
     renderCategories();
     renderList();
     renderViewer();
+    void ensureDefaultCategories(uid);
   });
+}
+
+async function ensureDefaultCategories(uid) {
+  if (!uid) return;
+  if (state.seededDefaultsForUid === uid) return;
+  if (state.seededDefaultsForUid === `pending:${uid}`) return;
+  if (!state.currentUser || state.currentUser.uid !== uid) return;
+
+  const existing = new Set(state.categories.map((c) => c.name.toLowerCase()));
+  const missing = DEFAULT_CATEGORY_NAMES.filter((name) => !existing.has(name.toLowerCase()));
+
+  if (!missing.length) {
+    state.seededDefaultsForUid = uid;
+    return;
+  }
+
+  state.seededDefaultsForUid = `pending:${uid}`;
+
+  for (const name of missing) {
+    await addDoc(collection(db, "categories"), {
+      uid,
+      name,
+      createdAt: serverTimestamp(),
+    });
+  }
+
+  state.seededDefaultsForUid = uid;
 }
 
 async function importFromText() {
