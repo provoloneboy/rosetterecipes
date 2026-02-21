@@ -390,6 +390,14 @@ async function importFromUrl() {
   setImportStatus("Fetching and extracting recipe...");
 
   try {
+    const cloudRecipe = await fetchRecipeFromCloudExtractor(sourceUrl);
+    if (cloudRecipe) {
+      await saveRecipe(cloudRecipe);
+      el.urlInput.value = "";
+      setImportStatus("Recipe extracted from URL.");
+      return;
+    }
+
     const text = await fetchRecipeTextWithFallbacks(sourceUrl);
     const structured = parseRecipeFromStructuredData(text, sourceUrl);
     const title = guessTitleFromMarkdown(text) || "Imported Recipe";
@@ -401,6 +409,56 @@ async function importFromUrl() {
     console.error(err);
     setImportStatus(`Could not extract this URL automatically (${err?.message || "blocked"}). Try paste text for this site.`);
   }
+}
+
+async function fetchRecipeFromCloudExtractor(sourceUrl) {
+  const endpoint = getExtractorEndpoint();
+  if (!endpoint) return null;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: sourceUrl }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const recipe = payload?.recipe;
+    if (!payload?.ok || !recipe) return null;
+
+    if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.instructions)) {
+      return null;
+    }
+
+    if (!recipe.ingredients.length || !recipe.instructions.length) {
+      return null;
+    }
+
+    return {
+      title: String(recipe.title || "Imported Recipe"),
+      sourceUrl: String(recipe.sourceUrl || sourceUrl),
+      servings: normalizeServings(recipe.servings || 1),
+      ingredients: recipe.ingredients.map((line) => String(line).trim()).filter(Boolean),
+      instructions: recipe.instructions.map((line) => String(line).trim()).filter(Boolean),
+      categoryId: "",
+    };
+  } catch (_err) {
+    return null;
+  }
+}
+
+function getExtractorEndpoint() {
+  const explicit = String(firebaseConfig?.extractorEndpoint || "").trim();
+  if (explicit) return explicit;
+
+  const projectId = String(firebaseConfig?.projectId || "").trim();
+  if (!projectId) return "";
+
+  return `https://us-central1-${projectId}.cloudfunctions.net/extractRecipe`;
 }
 
 async function fetchRecipeTextWithFallbacks(sourceUrl) {

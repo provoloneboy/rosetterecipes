@@ -96,6 +96,28 @@ Then in repo -> `Settings` -> `Pages`:
 2. Push to `main` (or run workflow manually)
 3. Workflow writes `firebase-config.json` at build time and deploys to Pages
 
+## 6. Deploy URL extractor function
+
+URL import now uses a backend function first (more reliable than browser scraping).
+
+From `/Users/andrewrobinson/Documents/New project`:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use e-s-recipes
+cd functions
+npm install
+cd ..
+firebase deploy --only functions:extractRecipe
+```
+
+Default endpoint used by the app:
+
+`https://us-central1-e-s-recipes.cloudfunctions.net/extractRecipe`
+
+If you ever use a different function URL, add `extractorEndpoint` to `firebase-config.local.json` (local) or `firebase-config.json` (deployed build).
+
 ## Notes
 
 - URL extraction uses `r.jina.ai` as a lightweight text mirror for recipe/blog pages.
