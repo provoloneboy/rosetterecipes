@@ -391,8 +391,9 @@ async function importFromUrl() {
 
   try {
     const text = await fetchRecipeTextWithFallbacks(sourceUrl);
+    const structured = parseRecipeFromStructuredData(text, sourceUrl);
     const title = guessTitleFromMarkdown(text) || "Imported Recipe";
-    const parsed = parseRecipeText(text, title, sourceUrl);
+    const parsed = structured || parseRecipeText(text, title, sourceUrl);
     await saveRecipe(parsed);
     el.urlInput.value = "";
     setImportStatus("Recipe extracted from URL.");
@@ -403,14 +404,15 @@ async function importFromUrl() {
 }
 
 async function fetchRecipeTextWithFallbacks(sourceUrl) {
-  const noScheme = sourceUrl.replace(/^https?:\/\//, "");
-  const targets = [
-    `https://r.jina.ai/http://${noScheme}`,
-    `https://r.jina.ai/https://${noScheme}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(sourceUrl)}`,
-    `https://r.jina.ai/http://r.jina.ai/http://${noScheme}`,
-  ];
+  const variants = getSourceUrlVariants(sourceUrl);
+  const targets = [];
+  for (const variant of variants) {
+    const noScheme = variant.replace(/^https?:\/\//, "");
+    targets.push(`https://r.jina.ai/http://${noScheme}`);
+    targets.push(`https://r.jina.ai/https://${noScheme}`);
+    targets.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(variant)}`);
+    targets.push(`https://corsproxy.io/?${encodeURIComponent(variant)}`);
+  }
 
   let lastError = null;
 
@@ -431,6 +433,116 @@ async function fetchRecipeTextWithFallbacks(sourceUrl) {
   }
 
   throw lastError || new Error("All URL extraction methods failed.");
+}
+
+function getSourceUrlVariants(sourceUrl) {
+  const urls = new Set([sourceUrl]);
+  try {
+    const parsed = new URL(sourceUrl);
+    if (parsed.hostname.includes("allrecipes.com")) {
+      const noTrailing = sourceUrl.replace(/\/$/, "");
+      urls.add(`${noTrailing}/print/`);
+      urls.add(`${noTrailing}?output=1`);
+    }
+  } catch (_err) {
+    // Keep default URL only.
+  }
+  return [...urls];
+}
+
+function parseRecipeFromStructuredData(rawText, sourceUrl) {
+  if (!/<script/i.test(rawText)) return null;
+
+  const blocks = [...rawText.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const block of blocks) {
+    const json = safeJsonParse(block[1]);
+    if (!json) continue;
+    const recipe = findRecipeNode(json);
+    if (!recipe) continue;
+
+    const ingredients = Array.isArray(recipe.recipeIngredient)
+      ? recipe.recipeIngredient.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const instructions = extractInstructions(recipe.recipeInstructions);
+    if (!ingredients.length || !instructions.length) continue;
+
+    return {
+      title: String(recipe.name || "Imported Recipe").trim(),
+      sourceUrl,
+      servings: extractServings(String(recipe.recipeYield || "")) || 1,
+      ingredients: dedupe(ingredients).slice(0, 80),
+      instructions: dedupe(instructions).slice(0, 80),
+      categoryId: "",
+    };
+  }
+
+  return null;
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function findRecipeNode(node) {
+  const queue = [node];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    const type = current["@type"];
+    if (
+      (typeof type === "string" && type.toLowerCase() === "recipe") ||
+      (Array.isArray(type) && type.some((x) => String(x).toLowerCase() === "recipe"))
+    ) {
+      return current;
+    }
+
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+
+    if (typeof current === "object") {
+      for (const value of Object.values(current)) {
+        if (value && typeof value === "object") queue.push(value);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractInstructions(rawInstructions) {
+  if (!rawInstructions) return [];
+  if (typeof rawInstructions === "string") return [rawInstructions.trim()].filter(Boolean);
+
+  if (Array.isArray(rawInstructions)) {
+    const result = [];
+    for (const item of rawInstructions) {
+      if (typeof item === "string") {
+        const text = item.trim();
+        if (text) result.push(text);
+      } else if (item && typeof item === "object") {
+        const text = item.text || item.name || "";
+        if (typeof text === "string" && text.trim()) result.push(text.trim());
+        if (Array.isArray(item.itemListElement)) {
+          result.push(...extractInstructions(item.itemListElement));
+        }
+      }
+    }
+    return result;
+  }
+
+  if (typeof rawInstructions === "object") {
+    const text = rawInstructions.text || rawInstructions.name || "";
+    return typeof text === "string" && text.trim() ? [text.trim()] : [];
+  }
+
+  return [];
 }
 
 async function importFromImage() {
