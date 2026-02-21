@@ -714,7 +714,7 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
 
     if (mode === "instructions") {
       const step = sanitizeInstructionLine(line);
-      if (step) instructionLines.push(step);
+      if (step && isLikelyInstruction(step)) instructionLines.push(step);
       continue;
     }
 
@@ -792,11 +792,16 @@ function isLikelyIngredient(line) {
   if (/^\d+\s*%$/.test(l)) return false;
   if (/^\d+\s*(mins?|minutes?|hours?|x)$/.test(l)) return false;
   if (/^\d+%(\d+%)+$/.test(l)) return false;
+  if (/^(step\s*\d+|\d+\s*[.)-]\s*step)/.test(l)) return false;
 
   const parsed = parseIngredientAmount(l);
   if (parsed) {
+    const rest = parsed.rest.toLowerCase().trim();
+    if (/^(step\s*\d+|\d+[.)-])/.test(rest)) return false;
+    if (rest.includes("registers 165")) return false;
+    if (rest.length > 90 && !parsed.unit) return false;
     if (parsed.unit) return true;
-    return /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef)\b/.test(parsed.rest.toLowerCase());
+    return /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef)\b/.test(rest);
   }
 
   return /^(pinch|dash)\b/.test(l) || /^(salt|pepper|water)\s+to taste\b/.test(l);
@@ -814,7 +819,7 @@ function classifySectionHeading(line) {
   const l = line.toLowerCase().replace(/[:\-]+$/, "").trim();
   if (/^ingredients?$/.test(l) || /^for the /.test(l)) return "ingredients";
   if (/^(instructions?|method|directions?|preparation|steps?)$/.test(l)) return "instructions";
-  if (/^(nutrition|notes?|tips?|faq|reviews?|comments?|video|related|storage|equipment|more ideas|frequently asked questions)/.test(l)) return "stop";
+  if (/^(nutrition|notes?|tips?|faq|reviews?|comments?|video|related|storage|equipment|more ideas|frequently asked questions|what to serve|have leftovers)/.test(l)) return "stop";
   return "none";
 }
 
@@ -837,6 +842,9 @@ function sanitizeInstructionLine(line) {
   if (!cleaned) return "";
   if (cleaned.length < 8 || cleaned.length > 260) return "";
   if (isLikelyNoise(cleaned)) return "";
+  if (/^\**[a-z][a-z\s-]{1,30}\**\s*:/.test(cleaned.toLowerCase())) return "";
+  if (/^what to serve with/i.test(cleaned)) return "";
+  if (/^have leftovers\?/i.test(cleaned)) return "";
   return cleaned;
 }
 
