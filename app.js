@@ -672,11 +672,11 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
   const cleanText = rawText.replace(/\r/g, "").trim();
   const lines = cleanText
     .split("\n")
-    .map((line) => line.trim())
+    .map((line) => normalizeLine(line))
     .filter(Boolean);
 
   const title =
-    lines.find((l) => l.length > 3 && l.length < 90 && !isLikelyInstruction(l) && !isLikelyIngredient(l)) ||
+    lines.find((l) => l.length > 3 && l.length < 90 && !isLikelyInstruction(l) && !isLikelyIngredient(l) && !isLikelyNoise(l)) ||
     fallbackTitle;
 
   const servings = extractServings(cleanText) || 1;
@@ -686,51 +686,81 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
 
   let mode = "unknown";
   for (const line of lines) {
-    const low = line.toLowerCase();
+    const heading = classifySectionHeading(line);
 
-    if (/^ingredients?\b/.test(low)) {
+    if (heading === "ingredients") {
       mode = "ingredients";
       continue;
     }
-    if (/^(instructions?|method|directions?)\b/.test(low)) {
+    if (heading === "instructions") {
       mode = "instructions";
       continue;
     }
+    if (heading === "stop") {
+      if (ingredientLines.length && instructionLines.length) {
+        break;
+      }
+      mode = "unknown";
+      continue;
+    }
+
+    if (isLikelyNoise(line)) continue;
 
     if (mode === "ingredients") {
-      ingredientLines.push(stripBullet(line));
+      const candidate = sanitizeIngredientLine(line);
+      if (candidate) ingredientLines.push(candidate);
       continue;
     }
 
     if (mode === "instructions") {
-      instructionLines.push(stripLeadingStep(line));
+      const step = sanitizeInstructionLine(line);
+      if (step) instructionLines.push(step);
       continue;
     }
 
     if (isLikelyIngredient(line)) {
-      ingredientLines.push(stripBullet(line));
+      const candidate = sanitizeIngredientLine(line);
+      if (candidate) ingredientLines.push(candidate);
     } else if (isLikelyInstruction(line)) {
-      instructionLines.push(stripLeadingStep(line));
+      const step = sanitizeInstructionLine(line);
+      if (step) instructionLines.push(step);
     }
   }
 
   if (!ingredientLines.length) {
-    ingredientLines.push(...lines.filter(isLikelyIngredient).map(stripBullet));
+    ingredientLines.push(
+      ...lines
+        .filter((line) => isLikelyIngredient(line) && !isLikelyNoise(line))
+        .map(sanitizeIngredientLine)
+        .filter(Boolean)
+    );
   }
 
   if (!instructionLines.length) {
-    const nonIngredients = lines.filter((l) => !isLikelyIngredient(l));
-    instructionLines.push(...nonIngredients.slice(0, 15).map(stripLeadingStep));
+    instructionLines.push(
+      ...lines
+        .filter((line) => isLikelyInstruction(line) && !isLikelyNoise(line))
+        .map(sanitizeInstructionLine)
+        .filter(Boolean)
+        .slice(0, 25)
+    );
   }
 
   return {
     title,
     sourceUrl,
     servings,
-    ingredients: dedupe(ingredientLines).slice(0, 80),
-    instructions: dedupe(instructionLines).slice(0, 80),
+    ingredients: dedupe(ingredientLines).slice(0, 60),
+    instructions: dedupe(instructionLines).slice(0, 40),
     categoryId: "",
   };
+}
+
+function normalizeLine(line) {
+  return String(line || "")
+    .replace(/\t/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function guessTitleFromMarkdown(text) {
@@ -748,7 +778,7 @@ function stripBullet(line) {
 }
 
 function stripLeadingStep(line) {
-  return line.replace(/^\d+[.)]\s*/, "").trim();
+  return line.replace(/^(step\s*)?\d+\s*[.)-]?\s*/i, "").trim();
 }
 
 function dedupe(arr) {
@@ -759,13 +789,51 @@ function isLikelyIngredient(line) {
   const l = line.toLowerCase();
   return (
     /^(\d+|\d+\/\d+|\d+\.\d+|one|two|three|half|¼|½|¾)/.test(l) ||
-    /\b(tsp|tbsp|cup|cups|oz|ounce|ounces|lb|pound|g|gram|kg|ml|l|pinch|dash)\b/.test(l)
+    /\b(tsp|tbsp|cup|cups|oz|ounce|ounces|lb|pound|g|gram|kg|ml|l|pinch|dash)\b/.test(l) ||
+    /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda)\b/.test(l)
   );
 }
 
 function isLikelyInstruction(line) {
   const l = line.toLowerCase();
-  return /^(step\s*\d+|\d+[.)]|preheat|mix|stir|bake|cook|saute|whisk|combine|serve|boil|simmer)\b/.test(l);
+  return (
+    /^(step\s*\d+|\d+[.)-])\s*/.test(l) ||
+    /\b(preheat|mix|stir|bake|cook|saute|whisk|combine|serve|boil|simmer|add|pour|heat|fold|beat|grease|chop|slice|transfer)\b/.test(l)
+  );
+}
+
+function classifySectionHeading(line) {
+  const l = line.toLowerCase().replace(/[:\-]+$/, "").trim();
+  if (/^ingredients?$/.test(l) || /^for the /.test(l)) return "ingredients";
+  if (/^(instructions?|method|directions?|preparation|steps?)$/.test(l)) return "instructions";
+  if (/^(nutrition|notes?|tips?|faq|reviews?|comments?|video|related|storage|equipment|more ideas|frequently asked questions)/.test(l)) return "stop";
+  return "none";
+}
+
+function sanitizeIngredientLine(line) {
+  const cleaned = stripBullet(line).replace(/^[\[(].*?[\])]\s*/, "").trim();
+  if (!cleaned) return "";
+  if (cleaned.length > 140) return "";
+  if (isLikelyNoise(cleaned)) return "";
+  return cleaned;
+}
+
+function sanitizeInstructionLine(line) {
+  const cleaned = stripLeadingStep(stripBullet(line));
+  if (!cleaned) return "";
+  if (cleaned.length < 8 || cleaned.length > 260) return "";
+  if (isLikelyNoise(cleaned)) return "";
+  return cleaned;
+}
+
+function isLikelyNoise(line) {
+  const l = line.toLowerCase();
+  return (
+    /^(advertisement|ad|sponsored|jump to recipe|print|save|rate|share)\b/.test(l) ||
+    /\b(all rights reserved|privacy policy|terms of use|cookie|follow us|subscribe|sign up|log in)\b/.test(l) ||
+    /\b(calories|daily value|% dv|nutrition facts)\b/.test(l) ||
+    /https?:\/\//.test(l)
+  );
 }
 
 function extractServings(text) {
