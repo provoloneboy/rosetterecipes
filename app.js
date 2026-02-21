@@ -750,8 +750,12 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
     );
   }
 
-  const recoveredIngredients = ingredientLines.length ? ingredientLines : recoverIngredientsFromText(cleanText);
-  const recoveredInstructions = instructionLines.length ? instructionLines : recoverInstructionsFromText(cleanText);
+  const recoveredIngredients = ingredientLines.length
+    ? ingredientLines
+    : recoverIngredientsFromText(cleanText).concat(recoverIngredientsGlobally(cleanText));
+  const recoveredInstructions = instructionLines.length
+    ? instructionLines
+    : recoverInstructionsFromText(cleanText).concat(recoverStepsGlobally(cleanText));
 
   return {
     title,
@@ -781,6 +785,29 @@ function recoverInstructionsFromText(rawText) {
     .map((x) => sanitizeInstructionLine(x))
     .filter((x) => x && isLikelyInstruction(x))
     .slice(0, 40);
+}
+
+function recoverIngredientsGlobally(rawText) {
+  const lines = rawText
+    .split("\n")
+    .map((x) => sanitizeIngredientLine(x))
+    .filter(Boolean);
+
+  return lines.filter((line) => {
+    if (!isLikelyIngredient(line)) return false;
+    const parsed = parseIngredientAmount(line.toLowerCase());
+    if (!parsed) return false;
+    const hasUnit = Boolean(parsed.unit);
+    const hasFoodWord = /\b(flour|sugar|salt|pepper|oil|butter|milk|eggs?|garlic|onion|vanilla|baking powder|baking soda|water|cream|cheese|chicken|beef|tomato|broth|pasta|rice)\b/i.test(line);
+    return hasUnit || hasFoodWord;
+  });
+}
+
+function recoverStepsGlobally(rawText) {
+  const matches = [...rawText.matchAll(/(?:^|\n)\s*(step\s*\d+\s*[:.)-]?\s*[^\n]{8,260})/gim)];
+  return matches
+    .map((m) => sanitizeInstructionLine(m[1]))
+    .filter((x) => x && isLikelyInstruction(x));
 }
 
 function extractSectionBlock(rawText, startPattern, endPattern) {
@@ -879,6 +906,8 @@ function sanitizeInstructionLine(line) {
   if (!cleaned) return "";
   if (cleaned.length < 8 || cleaned.length > 260) return "";
   if (isLikelyNoise(cleaned)) return "";
+  if (/^\d+\s*to\s*\d+\s*minutes?$/i.test(cleaned)) return "";
+  if (/^\d+\s*mins?$/i.test(cleaned)) return "";
   if (/^\**[a-z][a-z\s-]{1,30}\**\s*:/.test(cleaned.toLowerCase())) return "";
   if (/^what to serve with/i.test(cleaned)) return "";
   if (/^have leftovers\?/i.test(cleaned)) return "";
