@@ -461,9 +461,13 @@ function parseRecipeFromStructuredData(rawText, sourceUrl) {
     if (!recipe) continue;
 
     const ingredients = Array.isArray(recipe.recipeIngredient)
-      ? recipe.recipeIngredient.map((x) => String(x).trim()).filter(Boolean)
+      ? recipe.recipeIngredient
+          .map((x) => sanitizeIngredientLine(String(x)))
+          .filter((x) => x && isLikelyIngredient(x))
       : [];
-    const instructions = extractInstructions(recipe.recipeInstructions);
+    const instructions = extractInstructions(recipe.recipeInstructions)
+      .map((x) => sanitizeInstructionLine(String(x)))
+      .filter((x) => x && isLikelyInstruction(x));
     if (!ingredients.length || !instructions.length) continue;
 
     return {
@@ -746,14 +750,47 @@ function parseRecipeText(rawText, fallbackTitle, sourceUrl = "") {
     );
   }
 
+  const recoveredIngredients = ingredientLines.length ? ingredientLines : recoverIngredientsFromText(cleanText);
+  const recoveredInstructions = instructionLines.length ? instructionLines : recoverInstructionsFromText(cleanText);
+
   return {
     title,
     sourceUrl,
     servings,
-    ingredients: dedupe(ingredientLines).slice(0, 60),
-    instructions: dedupe(instructionLines).slice(0, 40),
+    ingredients: dedupe(recoveredIngredients).slice(0, 60),
+    instructions: dedupe(recoveredInstructions).slice(0, 40),
     categoryId: "",
   };
+}
+
+function recoverIngredientsFromText(rawText) {
+  const block = extractSectionBlock(rawText, /ingredients?/i, /(instructions?|directions?|method|steps?)/i);
+  if (!block) return [];
+  return block
+    .split(/\n|•|·|;/)
+    .map((x) => sanitizeIngredientLine(x))
+    .filter((x) => x && isLikelyIngredient(x))
+    .slice(0, 60);
+}
+
+function recoverInstructionsFromText(rawText) {
+  const block = extractSectionBlock(rawText, /(instructions?|directions?|method|steps?)/i, /(nutrition|notes?|reviews?|comments?|faq)/i);
+  if (!block) return [];
+  return block
+    .split(/\n/)
+    .map((x) => sanitizeInstructionLine(x))
+    .filter((x) => x && isLikelyInstruction(x))
+    .slice(0, 40);
+}
+
+function extractSectionBlock(rawText, startPattern, endPattern) {
+  const startMatch = rawText.match(startPattern);
+  if (!startMatch || startMatch.index == null) return "";
+  const start = startMatch.index + startMatch[0].length;
+  const rest = rawText.slice(start, start + 8000);
+  const endMatch = rest.match(endPattern);
+  if (!endMatch || endMatch.index == null) return rest;
+  return rest.slice(0, endMatch.index);
 }
 
 function normalizeLine(line) {
