@@ -24,7 +24,8 @@ const state = {
   recipes: [],
   categories: [],
   selectedId: null,
-  activeTab: "recipes",
+  currentPage: "home",
+  activeCategoryFilter: "all",
   currentUser: null,
   unsubRecipes: null,
   unsubCategories: null,
@@ -41,11 +42,13 @@ const el = {
   imageInput: document.getElementById("imageInput"),
   imageImportBtn: document.getElementById("imageImportBtn"),
   importStatus: document.getElementById("importStatus"),
+  navHomeBtn: document.getElementById("navHomeBtn"),
+  navSavedBtn: document.getElementById("navSavedBtn"),
+  homePage: document.getElementById("homePage"),
+  savedPage: document.getElementById("savedPage"),
   recipeList: document.getElementById("recipeList"),
   searchInput: document.getElementById("searchInput"),
-  recipesTabBtn: document.getElementById("recipesTabBtn"),
-  categoriesTabBtn: document.getElementById("categoriesTabBtn"),
-  categoriesPanel: document.getElementById("categoriesPanel"),
+  categoryTabs: document.getElementById("categoryTabs"),
   newCategoryInput: document.getElementById("newCategoryInput"),
   addCategoryBtn: document.getElementById("addCategoryBtn"),
   categoryList: document.getElementById("categoryList"),
@@ -115,8 +118,9 @@ init();
 
 function init() {
   bindEvents();
-  initTabs();
+  initPages();
   void initFirebase();
+  renderCategoryTabs();
   renderList();
   renderCategories();
   renderViewer();
@@ -191,6 +195,8 @@ function bindEvents() {
   el.urlImportBtn.addEventListener("click", importFromUrl);
   el.textImportBtn.addEventListener("click", importFromText);
   el.imageImportBtn.addEventListener("click", importFromImage);
+  el.navHomeBtn.addEventListener("click", () => setHashPage("home"));
+  el.navSavedBtn.addEventListener("click", () => setHashPage("saved"));
 
   el.searchInput.addEventListener("input", renderList);
 
@@ -209,26 +215,51 @@ function bindEvents() {
   });
 }
 
-function initTabs() {
-  el.recipesTabBtn.addEventListener("click", () => {
-    state.activeTab = "recipes";
-    renderTabState();
-  });
-
-  el.categoriesTabBtn.addEventListener("click", () => {
-    state.activeTab = "categories";
-    renderTabState();
-  });
-
-  renderTabState();
+function initPages() {
+  window.addEventListener("hashchange", setPageFromHash);
+  setPageFromHash();
 }
 
-function renderTabState() {
-  const recipesActive = state.activeTab === "recipes";
-  el.recipesTabBtn.classList.toggle("active", recipesActive);
-  el.categoriesTabBtn.classList.toggle("active", !recipesActive);
-  el.recipeList.classList.toggle("hidden", !recipesActive);
-  el.categoriesPanel.classList.toggle("hidden", recipesActive);
+function setPageFromHash() {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  const page = raw === "saved" ? "saved" : "home";
+  setPage(page);
+}
+
+function setHashPage(page) {
+  const target = page === "saved" ? "#saved" : "#home";
+  if (window.location.hash !== target) {
+    window.location.hash = target;
+    return;
+  }
+  setPage(page);
+}
+
+function setPage(page) {
+  state.currentPage = page;
+  const homeActive = page === "home";
+  el.homePage.classList.toggle("hidden", !homeActive);
+  el.savedPage.classList.toggle("hidden", homeActive);
+  el.navHomeBtn.classList.toggle("active", homeActive);
+  el.navSavedBtn.classList.toggle("active", !homeActive);
+}
+
+function renderCategoryTabs() {
+  el.categoryTabs.innerHTML = "";
+  const tabs = [{ id: "all", label: "All" }, ...state.categories.map((c) => ({ id: c.id, label: c.name })), { id: "uncategorized", label: "Uncategorized" }];
+
+  for (const tab of tabs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `tab${state.activeCategoryFilter === tab.id ? " active" : ""}`;
+    button.textContent = tab.label;
+    button.addEventListener("click", () => {
+      state.activeCategoryFilter = tab.id;
+      renderCategoryTabs();
+      renderList();
+    });
+    el.categoryTabs.appendChild(button);
+  }
 }
 
 function toggleAuthedUi(isAuthed) {
@@ -339,6 +370,7 @@ function subscribeToUserData(uid) {
       state.selectedId = state.recipes[0]?.id || null;
     }
 
+    renderCategoryTabs();
     renderList();
     renderViewer();
     renderCategories();
@@ -354,7 +386,16 @@ function subscribeToUserData(uid) {
       .filter((c) => c.name)
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    const activeIsValid =
+      state.activeCategoryFilter === "all" ||
+      state.activeCategoryFilter === "uncategorized" ||
+      state.categories.some((c) => c.id === state.activeCategoryFilter);
+    if (!activeIsValid) {
+      state.activeCategoryFilter = "all";
+    }
+
     renderCategories();
+    renderCategoryTabs();
     renderList();
     renderViewer();
     void ensureDefaultCategories(uid);
@@ -1035,6 +1076,12 @@ function renderList() {
   const queryText = el.searchInput.value.trim().toLowerCase();
 
   const items = state.recipes.filter((recipe) => {
+    const matchesCategory =
+      state.activeCategoryFilter === "all" ||
+      (state.activeCategoryFilter === "uncategorized" && !recipe.categoryId) ||
+      recipe.categoryId === state.activeCategoryFilter;
+    if (!matchesCategory) return false;
+
     if (!queryText) return true;
     const categoryName = findCategoryName(recipe.categoryId).toLowerCase();
     return (
@@ -1084,6 +1131,7 @@ function renderList() {
 
 function renderCategories() {
   el.categoryList.innerHTML = "";
+  renderCategoryTabs();
 
   if (!state.currentUser) {
     const p = document.createElement("p");
