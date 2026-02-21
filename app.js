@@ -390,13 +390,7 @@ async function importFromUrl() {
   setImportStatus("Fetching and extracting recipe...");
 
   try {
-    const url = `https://r.jina.ai/http://${sourceUrl.replace(/^https?:\/\//, "")}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Request failed (${res.status})`);
-    }
-
-    const text = await res.text();
+    const text = await fetchRecipeTextWithFallbacks(sourceUrl);
     const title = guessTitleFromMarkdown(text) || "Imported Recipe";
     const parsed = parseRecipeText(text, title, sourceUrl);
     await saveRecipe(parsed);
@@ -404,8 +398,37 @@ async function importFromUrl() {
     setImportStatus("Recipe extracted from URL.");
   } catch (err) {
     console.error(err);
-    setImportStatus("Could not extract this URL automatically. Try paste text instead.");
+    setImportStatus("Could not extract this URL automatically. Try paste text for this site.");
   }
+}
+
+async function fetchRecipeTextWithFallbacks(sourceUrl) {
+  const noScheme = sourceUrl.replace(/^https?:\/\//, "");
+  const targets = [
+    `https://r.jina.ai/http://${noScheme}`,
+    `https://r.jina.ai/https://${noScheme}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
+  ];
+
+  let lastError = null;
+
+  for (const target of targets) {
+    try {
+      const response = await fetch(target, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} from ${target}`);
+      }
+      const text = (await response.text()).trim();
+      if (!text) {
+        throw new Error(`Empty response from ${target}`);
+      }
+      return text;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All URL extraction methods failed.");
 }
 
 async function importFromImage() {
@@ -426,6 +449,9 @@ async function importFromImage() {
 
   try {
     const result = await Tesseract.recognize(file, "eng", {
+      workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js",
+      corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js",
+      langPath: "https://tessdata.projectnaptha.com/4.0.0",
       logger: (m) => {
         if (m.status === "recognizing text") {
           setImportStatus(`Reading image... ${Math.round(m.progress * 100)}%`);
